@@ -17,6 +17,17 @@ from typing import Dict, List, Optional
 POSE_TICK_SECONDS: float = 0.5  # pose detector emits one pose every 0.5s (simulation)
 MAX_POSE_BUFFER_LEN: int = 50   # keep last N pose segments (compressed)
 
+# -----------------------
+# Pose detector simulation mode
+# -----------------------
+# "random" -> random pose every tick
+# "action_sequence" -> emit pose sequences that match a random action template
+POSE_DETECTOR_MODE: str = "action_sequence"
+
+# Only used when POSE_DETECTOR_MODE == "action_sequence"
+# How many ticks to repeat each pose step (repetition creates pose "duration" in compressed segments)
+STEP_DWELL_TICKS_MIN: int = 1
+STEP_DWELL_TICKS_MAX: int = 4
 
 # -----------------------
 # Domain vocabulary

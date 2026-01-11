@@ -82,10 +82,10 @@ ACTION_STEP_CONSTRAINTS: Dict[str, List[List[dict]]] = {}
 # Example (COMMENTED OUT): If you later want time constraints, you could do:
 #
 # ACTION_STEP_CONSTRAINTS = {
-#     "picking_objects_from_floor": [
+#     "requesting_for_a_book": [
 #         [
 #             {},                 # standing (no constraint)
-#             {"min_duration": 2.0},  # picking must last >= 2 seconds
+#             {"min_duration": 1.0},  # picking must last >= 1 seconds
 #             {},                 # raising_hand
 #         ]
 #     ]

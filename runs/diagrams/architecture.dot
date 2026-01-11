@@ -1,0 +1,97 @@
+digraph Architecture {
+  rankdir=LR;
+  compound=true;
+  fontname="Arial";
+  labelloc="t";
+  label="ontology_hri_system — Event/Procedure Architecture";
+  node [fontname="Arial"];
+  edge [fontname="Arial"];
+
+"Scheduler" [shape=box, style="rounded", style="rounded,filled", fillcolor="#F2F2F2"];
+"UpperOntology (OU)" [shape=folder, style="rounded", style="rounded,filled", fillcolor="#FFF7E6"];
+"MemoryStore (per-human)" [shape=folder, style="rounded", style="rounded,filled", fillcolor="#FFF7E6"];
+"PoseDetectorSim" [shape=component, style="rounded", style="rounded,filled", fillcolor="#E8F5E9"];
+"SpotRobotSim" [shape=component, style="rounded", style="rounded,filled", fillcolor="#E3F2FD"];
+
+  subgraph cluster_events {
+    label="Events";
+    style="rounded";
+    color="#BBBBBB";
+    "Event::ActionRecognized" [shape=ellipse, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Event::BestFamilyChanged" [shape=ellipse, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Event::EarlyIntentUpdated" [shape=ellipse, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Event::HumanStateUpdated" [shape=ellipse, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Event::PoseSegmentUpdated" [shape=ellipse, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Event::PoseTick" [shape=ellipse, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Event::TaskCompleted" [shape=ellipse, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+  }
+
+  subgraph cluster_procs {
+    label="Procedures";
+    style="rounded";
+    color="#BBBBBB";
+    "Proc::ComputeEarlyIntent" [shape=box, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Proc::DetectAction" [shape=box, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Proc::DispatchTask" [shape=box, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Proc::OnTaskCompleted" [shape=box, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Proc::PerceptionToPoseSegment" [shape=box, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Proc::PrepareFamilyPretask" [shape=box, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Proc::ResetTickFlags" [shape=box, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Proc::UpdateHumanState" [shape=box, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+  }
+
+  subgraph cluster_ont {
+    label="Ontologies / Knowledge";
+    style="rounded";
+    color="#BBBBBB";
+    "PerceptionOntology (OP)" [shape=folder, style="rounded", style="rounded,filled", fillcolor="#FFF7E6"];
+    "HumanStateOntology (OS)" [shape=folder, style="rounded", style="rounded,filled", fillcolor="#FFF7E6"];
+    "HumanActionOntology (OA)" [shape=folder, style="rounded", style="rounded,filled", fillcolor="#FFF7E6"];
+    "RobotOntology (OR)" [shape=folder, style="rounded", style="rounded,filled", fillcolor="#FFF7E6"];
+  }
+
+  subgraph cluster_domain {
+    label="Domain Definitions (from config)";
+    style="rounded";
+    color="#BBBBBB";
+    "Actions (5)" [shape=note, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Families (5)" [shape=note, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Tasks (5)" [shape=note, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+    "Pretasks (4)" [shape=note, style="rounded", style="rounded,filled", fillcolor="#FFFFFF"];
+  }
+
+"PoseDetectorSim" -> "Event::PoseTick" [label="emits"];
+"Scheduler" -> "Event::PoseTick" [label="dispatches", style="dashed"];
+"Event::PoseTick" -> "Proc::ResetTickFlags" [label="triggers"];
+"Event::PoseTick" -> "Proc::PerceptionToPoseSegment" [label="triggers"];
+"Event::PoseSegmentUpdated" -> "Proc::UpdateHumanState" [label="triggers"];
+"Event::PoseSegmentUpdated" -> "Proc::DetectAction" [label="triggers"];
+"Event::PoseSegmentUpdated" -> "Proc::ComputeEarlyIntent" [label="triggers"];
+"Event::BestFamilyChanged" -> "Proc::PrepareFamilyPretask" [label="triggers"];
+"Event::ActionRecognized" -> "Proc::DispatchTask" [label="triggers"];
+"Event::TaskCompleted" -> "Proc::OnTaskCompleted" [label="triggers"];
+"Proc::PerceptionToPoseSegment" -> "Event::PoseSegmentUpdated" [label="emits", style="dashed"];
+"Proc::UpdateHumanState" -> "Event::HumanStateUpdated" [label="emits", style="dashed"];
+"Proc::DetectAction" -> "Event::ActionRecognized" [label="emits", style="dashed"];
+"Proc::ComputeEarlyIntent" -> "Event::EarlyIntentUpdated" [label="emits", style="dashed"];
+"Proc::ComputeEarlyIntent" -> "Event::BestFamilyChanged" [label="emits", style="dashed"];
+"Proc::DispatchTask" -> "Event::TaskCompleted" [label="emits", style="dashed"];
+"Proc::PerceptionToPoseSegment" -> "PerceptionOntology (OP)" [label="updates"];
+"Proc::UpdateHumanState" -> "HumanStateOntology (OS)" [label="updates"];
+"Proc::ComputeEarlyIntent" -> "HumanActionOntology (OA)" [label="reads/infers"];
+"Proc::DetectAction" -> "HumanActionOntology (OA)" [label="reads/infers"];
+"Proc::PrepareFamilyPretask" -> "RobotOntology (OR)" [label="prepares"];
+"Proc::DispatchTask" -> "RobotOntology (OR)" [label="executes"];
+"Proc::OnTaskCompleted" -> "UpperOntology (OU)" [label="mode/episode"];
+"Proc::ResetTickFlags" -> "UpperOntology (OU)" [label="coordination", style="dotted"];
+"Proc::PrepareFamilyPretask" -> "SpotRobotSim" [label="async pretask"];
+"Proc::DispatchTask" -> "SpotRobotSim" [label="task"];
+"Proc::PerceptionToPoseSegment" -> "MemoryStore (per-human)" [label="writes"];
+"Proc::DetectAction" -> "MemoryStore (per-human)" [label="writes"];
+"Proc::DispatchTask" -> "MemoryStore (per-human)" [label="writes"];
+"Proc::OnTaskCompleted" -> "MemoryStore (per-human)" [label="clears"];
+"HumanActionOntology (OA)" -> "Actions (5)" [label="loads"];
+"HumanActionOntology (OA)" -> "Families (5)" [label="builds"];
+"RobotOntology (OR)" -> "Tasks (5)" [label="loads"];
+"RobotOntology (OR)" -> "Pretasks (4)" [label="loads"];
+}

@@ -36,6 +36,15 @@ TRACE_JSONL_INCLUDE_PAYLOAD: bool = True
 TRACE_JSONL_MAX_VALUE_LEN: int = 120
 
 # -----------------------
+# Architecture diagram (Graphviz)
+# -----------------------
+ARCH_DIAGRAM_ENABLE: bool = True
+ARCH_DIAGRAM_OUTPUT_DIR: str = "runs/diagrams"
+ARCH_DIAGRAM_BASENAME: str = "architecture"   # will write architecture.dot (+ .svg if dot exists)
+ARCH_DIAGRAM_RENDER_SVG: bool = True          # requires Graphviz installed (dot executable)
+ARCH_DIAGRAM_OVERWRITE: bool = True
+
+# -----------------------
 # Pose detector simulation mode
 # -----------------------
 # "random" -> random pose every tick

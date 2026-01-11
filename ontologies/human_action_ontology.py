@@ -2,15 +2,15 @@
 Human Action Ontology (OA).
 
 Defines action templates as sequences of pose labels.
-Optionally supports time constraints per step and/or per whole action.
+Also defines ActionFamily objects built from shared prefixes (for early intent).
 
-Current project status: constraints are supported but *not used* by default.
+Constraints are supported but optional; current action set uses none by default.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set, Tuple
 
 
 @dataclass(frozen=True)
@@ -33,12 +33,8 @@ class ActionConstraint:
 class ActionDefinition:
     name: str
     sequences: List[List[str]]
-
     # Optional: constraints per sequence (parallel list to `sequences`)
-    # Each element is either None (no constraints) or list[StepConstraint] with same length as the sequence.
     step_constraints: Optional[List[Optional[List[StepConstraint]]]] = None
-
-    # Optional: constraints for the whole action (None = no constraint)
     action_constraint: Optional[ActionConstraint] = None
 
 
@@ -50,6 +46,15 @@ class ActionInstance:
     end_time: float
     start_time: Optional[float] = None
     confidence: float = 1.0
+
+
+@dataclass(frozen=True)
+class ActionFamily:
+    """A family groups actions that share a common prefix."""
+    family_id: str
+    prefix: List[str]
+    members: Set[str]
+    pre_task: Optional[str] = None
 
 
 def build_action_definitions(
@@ -107,3 +112,49 @@ def build_action_definitions(
         )
 
     return out
+
+
+def build_action_families(
+    action_defs: Dict[str, ActionDefinition],
+    min_prefix_len: int = 2,
+    min_members: int = 2,
+    pretask_by_prefix: Optional[Dict[Tuple[str, ...], str]] = None,
+) -> Dict[str, ActionFamily]:
+    """
+    Automatically build action families from shared prefixes across actions.
+
+    A prefix qualifies as a family if:
+      - length(prefix) >= min_prefix_len
+      - it is shared by >= min_members actions
+
+    pretask_by_prefix can attach a pre_task name to a family if the exact prefix tuple is present.
+    """
+    prefix_to_members: Dict[Tuple[str, ...], Set[str]] = {}
+
+    for action_name, adef in action_defs.items():
+        for seq in adef.sequences:
+            # prefixes of length 1..len(seq) (we filter by min_prefix_len later)
+            for k in range(1, len(seq) + 1):
+                pref = tuple(seq[:k])
+                prefix_to_members.setdefault(pref, set()).add(action_name)
+
+    families: Dict[str, ActionFamily] = {}
+    for pref, members in prefix_to_members.items():
+        if len(pref) < min_prefix_len:
+            continue
+        if len(members) < min_members:
+            continue
+
+        family_id = "F_" + "_".join(pref)
+        pre_task = None
+        if pretask_by_prefix and pref in pretask_by_prefix:
+            pre_task = pretask_by_prefix[pref]
+
+        families[family_id] = ActionFamily(
+            family_id=family_id,
+            prefix=list(pref),
+            members=set(members),
+            pre_task=pre_task,
+        )
+
+    return families

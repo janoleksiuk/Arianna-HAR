@@ -8,7 +8,7 @@ ontology-network + procedure architecture but does not require OWL tooling.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 # -----------------------
@@ -16,6 +16,7 @@ from typing import Dict, List, Optional
 # -----------------------
 POSE_TICK_SECONDS: float = 0.5  # pose detector emits one pose every 0.5s (simulation)
 MAX_POSE_BUFFER_LEN: int = 50   # keep last N pose segments (compressed)
+
 
 # -----------------------
 # Pose detector simulation mode
@@ -25,15 +26,17 @@ MAX_POSE_BUFFER_LEN: int = 50   # keep last N pose segments (compressed)
 POSE_DETECTOR_MODE: str = "action_sequence"
 
 # Only used when POSE_DETECTOR_MODE == "action_sequence"
-# How many ticks to repeat each pose step (repetition creates pose "duration" in compressed segments)
 STEP_DWELL_TICKS_MIN: int = 1
 STEP_DWELL_TICKS_MAX: int = 4
+
+ADD_NOISE_BETWEEN_ACTIONS: bool = False
+NOISE_TICKS_MIN: int = 0
+NOISE_TICKS_MAX: int = 4
+
 
 # -----------------------
 # Domain vocabulary
 # -----------------------
-# Pose labels (finite set) as requested:
-# {(sitting, standing, raising hand, picking, bowing, walking, drinking)}
 POSE_SET = {
     "sitting",
     "standing",
@@ -67,31 +70,19 @@ ACTION_DEFINITIONS: Dict[str, List[List[str]]] = {
 }
 
 # Optional (currently unused): step constraints per action sequence.
-# Keep this empty to ensure the current action set has NO time constraints.
-#
-# Structure:
-# ACTION_STEP_CONSTRAINTS[action_name] = [
-#   [  # constraints for sequence #0 (same length as ACTION_DEFINITIONS[action_name][0])
-#     {"min_duration": None, "max_duration": None, "max_gap_after_prev": None},
-#     ...
-#   ],
-#   ... sequence #1 constraints, etc.
-# ]
+# Keep empty -> current action set has NO time constraints.
 ACTION_STEP_CONSTRAINTS: Dict[str, List[List[dict]]] = {}
 
-# Example (COMMENTED OUT): If you later want time constraints, you could do:
-#
+# Example (COMMENT): if later you want time constraints:
 # ACTION_STEP_CONSTRAINTS = {
-#     "requesting_for_a_book": [
+#     "picking_objects_from_floor": [
 #         [
-#             {},                 # standing (no constraint)
-#             {"min_duration": 1.0},  # picking must last >= 1 seconds
+#             {},                 # standing
+#             {"min_duration": 2.0},  # picking >= 2s
 #             {},                 # raising_hand
 #         ]
 #     ]
 # }
-#
-# With POSE_TICK_SECONDS=0.5, min_duration=2.0 requires ~4 consecutive picking ticks.
 
 
 # -----------------------
@@ -157,6 +148,42 @@ TASK_DEFINITIONS: Dict[str, List[BehaviorStepDef]] = {
         BehaviorStepDef("approach_object", {"object": "human"}),
         BehaviorStepDef("release_object", {"object": "sponge"}),
         BehaviorStepDef("return_to_start"),
+    ],
+}
+
+
+# -----------------------
+# Action Families + Pre-tasks 
+# -----------------------
+# Families are built automatically from shared prefixes.
+# Here we optionally attach a "pre_task" to a prefix (tuple of pose labels).
+#
+# Meaning: when that prefix is observed as a suffix of the current buffer,
+# the robot can do a non-committal preparation routine.
+FAMILY_PRETASK_BY_PREFIX: Dict[Tuple[str, ...], str] = {
+    ("sitting", "standing", "walking"): "pretask_observe_and_scan",
+    ("sitting", "standing", "walking", "picking"): "pretask_scan_pick_area",
+    ("standing", "picking"): "pretask_scan_floor_area",
+    ("walking", "sitting"): "pretask_scan_book_area",
+}
+
+# Define what each pretask does (safe, reversible, no grasp).
+PRETASK_DEFINITIONS: Dict[str, List[BehaviorStepDef]] = {
+    "pretask_observe_and_scan": [
+        BehaviorStepDef("face_human"),
+        BehaviorStepDef("move_to_observation_point"),
+        BehaviorStepDef("scan_environment"),
+    ],
+    "pretask_scan_pick_area": [
+        BehaviorStepDef("face_human"),
+        BehaviorStepDef("scan_pick_zone"),
+    ],
+    "pretask_scan_floor_area": [
+        BehaviorStepDef("tilt_sensors_down"),
+        BehaviorStepDef("scan_floor"),
+    ],
+    "pretask_scan_book_area": [
+        BehaviorStepDef("scan_shelves_for_book"),
     ],
 }
 

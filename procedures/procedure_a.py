@@ -1,8 +1,12 @@
 """
-Procedure A (PA): action recognition + early intent inference.
+Procedure A (PA): action recognition + early intent inference (multi-human).
 
-- detect_action(): final action recognition (suffix match + optional time constraints)
-- compute_early_intent(): computes candidate actions and candidate families from prefix matches
+- detect_action(human_id): final action recognition (suffix match + optional constraints)
+- compute_early_intent(human_id): returns candidate actions + families and best family
+
+Works even when:
+- No time constraints are defined (constraints are optional)
+- No families are built (families optional)
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ from ontologies.human_action_ontology import (
     StepConstraint,
     ActionConstraint,
 )
-from ontologies.memory_storage import EpisodeMemory
+from ontologies.memory_storage import MultiHumanMemoryStore
 
 
 def _all_prefixes(seq: List[str]) -> List[List[str]]:
@@ -35,11 +39,11 @@ class EarlyIntent:
 @dataclass
 class ProcedureA:
     action_defs: Dict[str, ActionDefinition]
-    memory: EpisodeMemory
+    memory_store: MultiHumanMemoryStore
     families: Optional[Dict[str, ActionFamily]] = None
 
     # -------------------------
-    # Constraint checking helpers (unchanged behavior when constraints are None)
+    # Constraint checking helpers
     # -------------------------
     def _check_step_constraints(
         self,
@@ -94,11 +98,12 @@ class ProcedureA:
         return True, start_t
 
     # -------------------------
-    # Final action recognition
+    # Final action recognition (per human)
     # -------------------------
-    def detect_action(self, now_t: float) -> Optional[ActionInstance]:
-        labels = self.memory.pose_label_sequence()
-        pose_segments = self.memory.pose_segments
+    def detect_action(self, human_id: str, now_t: float) -> Optional[ActionInstance]:
+        memory = self.memory_store.get(human_id)
+        labels = memory.pose_label_sequence()
+        pose_segments = memory.pose_segments
 
         for action_name, adef in self.action_defs.items():
             for seq_idx, seq in enumerate(adef.sequences):
@@ -122,18 +127,19 @@ class ProcedureA:
                         end_time=now_t,
                         confidence=1.0,
                     )
-                    self.memory.recognized_actions.append(inst)
+                    memory.recognized_actions.append(inst)
                     return inst
 
         return None
 
     # -------------------------
-    # Early intent: candidates + families
+    # Early intent (per human)
     # -------------------------
-    def compute_early_intent(self) -> EarlyIntent:
-        labels = self.memory.pose_label_sequence()
+    def compute_early_intent(self, human_id: str) -> EarlyIntent:
+        memory = self.memory_store.get(human_id)
+        labels = memory.pose_label_sequence()
 
-        # Candidate actions based on prefix matches (best prefix length per action)
+        # Candidate actions based on prefix matches
         candidate_actions: Dict[str, int] = {}
         for action_name, adef in self.action_defs.items():
             best = 0

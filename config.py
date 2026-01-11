@@ -17,6 +17,13 @@ from typing import Dict, List, Optional, Tuple
 POSE_TICK_SECONDS: float = 0.5  # pose detector emits one pose every 0.5s (simulation)
 MAX_POSE_BUFFER_LEN: int = 50   # keep last N pose segments (compressed)
 
+# -----------------------
+# Scheduler tracing (Arianna+-style execution trace)
+# -----------------------
+TRACE: bool = True  # set False to disable trace output
+TRACE_PAYLOAD: bool = True  # include small payload summaries in trace lines
+TRACE_MAX_VALUE_LEN: int = 90  # truncate long payload values
+
 
 # -----------------------
 # Pose detector simulation mode

@@ -23,7 +23,6 @@ MAX_POSE_BUFFER_LEN: int = 50   # keep last N pose segments (compressed)
 # -----------------------
 # Pose labels (finite set) as requested:
 # {(sitting, standing, raising hand, picking, bowing, walking, drinking)}
-# We normalize labels to snake_case for code.
 POSE_SET = {
     "sitting",
     "standing",
@@ -36,14 +35,8 @@ POSE_SET = {
 
 
 # -----------------------
-# Actions (from your table)
+# Action definitions (NO time constraints used here)
 # -----------------------
-# NOTE:
-# - 'Washing hands' in the table uses: Sitting, Standing, Walking, Washing (bowing)
-#   Since the pose set does not include 'washing', we model it as 'bowing'.
-#
-# - 'Picking(a cup)' and 'Picking(a can)' both map to pose 'picking' in this prototype.
-#   Disambiguation could be added later by enriching poses with object context.
 ACTION_DEFINITIONS: Dict[str, List[List[str]]] = {
     "drinking_water": [
         ["sitting", "standing", "walking", "picking", "walking", "sitting"],
@@ -61,6 +54,33 @@ ACTION_DEFINITIONS: Dict[str, List[List[str]]] = {
         ["sitting", "standing", "walking", "bowing"],
     ],
 }
+
+# Optional (currently unused): step constraints per action sequence.
+# Keep this empty to ensure the current action set has NO time constraints.
+#
+# Structure:
+# ACTION_STEP_CONSTRAINTS[action_name] = [
+#   [  # constraints for sequence #0 (same length as ACTION_DEFINITIONS[action_name][0])
+#     {"min_duration": None, "max_duration": None, "max_gap_after_prev": None},
+#     ...
+#   ],
+#   ... sequence #1 constraints, etc.
+# ]
+ACTION_STEP_CONSTRAINTS: Dict[str, List[List[dict]]] = {}
+
+# Example (COMMENTED OUT): If you later want time constraints, you could do:
+#
+# ACTION_STEP_CONSTRAINTS = {
+#     "picking_objects_from_floor": [
+#         [
+#             {},                 # standing (no constraint)
+#             {"min_duration": 2.0},  # picking must last >= 2 seconds
+#             {},                 # raising_hand
+#         ]
+#     ]
+# }
+#
+# With POSE_TICK_SECONDS=0.5, min_duration=2.0 requires ~4 consecutive picking ticks.
 
 
 # -----------------------
@@ -133,4 +153,3 @@ TASK_DEFINITIONS: Dict[str, List[BehaviorStepDef]] = {
 # Execution simulation
 BEHAVIOR_STEP_SECONDS: float = 0.7  # each behavior step sleeps this long (simulation)
 SYSTEM_NAME: str = "ontology_hri_system"
-

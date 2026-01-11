@@ -1,4 +1,5 @@
-"""Main entry point.
+"""
+Main entry point.
 
 PoseDetector -> ProcedureP (pose segments) -> ProcedureS (human state)
 -> ProcedureA (action recognition) -> ProcedureR (robot task execution)
@@ -41,8 +42,11 @@ def main() -> None:
     human_state = HumanState()
     memory = EpisodeMemory()
 
-    # Build definitions
-    action_defs = build_action_definitions(config.ACTION_DEFINITIONS)
+    # Build definitions (constraints supported but empty by default)
+    action_defs = build_action_definitions(
+        config.ACTION_DEFINITIONS,
+        step_constraints_dict=getattr(config, "ACTION_STEP_CONSTRAINTS", None),
+    )
     task_defs = build_task_definitions(config.TASK_DEFINITIONS)
 
     # Robot
@@ -88,4 +92,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

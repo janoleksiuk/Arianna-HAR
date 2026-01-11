@@ -24,6 +24,16 @@ TRACE: bool = True  # set False to disable trace output
 TRACE_PAYLOAD: bool = True  # include small payload summaries in trace lines
 TRACE_MAX_VALUE_LEN: int = 90  # truncate long payload values
 
+# -----------------------
+# Trace to JSON Lines (for live dashboard + evaluation)
+# -----------------------
+TRACE_JSONL: bool = True
+TRACE_JSONL_PATH: str = "runs/trace.jsonl"
+TRACE_JSONL_RESET_ON_START: bool = True  # overwrite trace file on each run
+
+# If True, store summarized payload fields in trace records
+TRACE_JSONL_INCLUDE_PAYLOAD: bool = True
+TRACE_JSONL_MAX_VALUE_LEN: int = 120
 
 # -----------------------
 # Pose detector simulation mode

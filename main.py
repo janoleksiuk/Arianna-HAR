@@ -18,7 +18,8 @@ import logging
 import config
 from utils.logger import setup_logger
 
-from scheduler import EventScheduler, make_condition, make_procedure
+from scheduler import EventScheduler, make_condition, make_procedure, JsonlTraceSink
+
 
 from ontologies.upper_ontology import UpperOntologyState, SystemMode
 from ontologies.human_state_ontology import HumanState
@@ -77,6 +78,13 @@ def main() -> None:
     # -----------------------
     # Scheduler + shared state (blackboard)
     # -----------------------
+    # Reset trace file if desired
+    if getattr(config, "TRACE_JSONL", False) and getattr(config, "TRACE_JSONL_RESET_ON_START", False):
+        import os
+        os.makedirs(os.path.dirname(config.TRACE_JSONL_PATH) or ".", exist_ok=True)
+        if os.path.exists(config.TRACE_JSONL_PATH):
+            os.remove(config.TRACE_JSONL_PATH)
+
     sched = EventScheduler(
         state={
             "logger": logger,
@@ -88,8 +96,13 @@ def main() -> None:
         trace=getattr(config, "TRACE", False),
         trace_payload=getattr(config, "TRACE_PAYLOAD", False),
         trace_max_value_len=getattr(config, "TRACE_MAX_VALUE_LEN", 90),
+        trace_sink=JsonlTraceSink(
+            enabled=getattr(config, "TRACE_JSONL", False),
+            path=getattr(config, "TRACE_JSONL_PATH", "runs/trace.jsonl"),
+            include_payload=getattr(config, "TRACE_JSONL_INCLUDE_PAYLOAD", True),
+            max_value_len=getattr(config, "TRACE_JSONL_MAX_VALUE_LEN", 120),
+        ),
     )
-
 
     # -----------------------
     # Conditions

@@ -18,7 +18,8 @@ import logging
 import config
 from utils.logger import setup_logger
 
-from scheduler import EventScheduler, make_condition, make_procedure
+from scheduler import EventScheduler, make_condition, make_procedure, JsonlTraceSink
+from visualization.diagrams.build_arch_graph import ArchGraphSpec, export_architecture_graph
 
 from ontologies.upper_ontology import UpperOntologyState, SystemMode
 from ontologies.human_state_ontology import HumanState
@@ -77,6 +78,13 @@ def main() -> None:
     # -----------------------
     # Scheduler + shared state (blackboard)
     # -----------------------
+    # Reset trace file if desired
+    if getattr(config, "TRACE_JSONL", False) and getattr(config, "TRACE_JSONL_RESET_ON_START", False):
+        import os
+        os.makedirs(os.path.dirname(config.TRACE_JSONL_PATH) or ".", exist_ok=True)
+        if os.path.exists(config.TRACE_JSONL_PATH):
+            os.remove(config.TRACE_JSONL_PATH)
+
     sched = EventScheduler(
         state={
             "logger": logger,
@@ -88,8 +96,13 @@ def main() -> None:
         trace=getattr(config, "TRACE", False),
         trace_payload=getattr(config, "TRACE_PAYLOAD", False),
         trace_max_value_len=getattr(config, "TRACE_MAX_VALUE_LEN", 90),
+        trace_sink=JsonlTraceSink(
+            enabled=getattr(config, "TRACE_JSONL", False),
+            path=getattr(config, "TRACE_JSONL_PATH", "runs/trace.jsonl"),
+            include_payload=getattr(config, "TRACE_JSONL_INCLUDE_PAYLOAD", True),
+            max_value_len=getattr(config, "TRACE_JSONL_MAX_VALUE_LEN", 120),
+        ),
     )
-
 
     # -----------------------
     # Conditions
@@ -192,6 +205,53 @@ def main() -> None:
         logger.info(f"[{hid}] System reset; ready for next episode. (last_task={e.payload['task_name']})")
 
     sched.register("TaskCompleted", make_procedure("OnTaskCompleted", proc_on_task_completed))
+
+        # -----------------------
+    # Export Graphviz architecture diagram (from registrations + config)
+    # -----------------------
+    if getattr(config, "ARCH_DIAGRAM_ENABLE", False):
+        # Build event->procedures map from scheduler registrations
+        event_to_procs = {
+            ev: [p.name for p in procs]
+            for ev, procs in sched.procedures_by_event.items()
+        }
+
+        # This metadata describes procedure outputs (emitted events).
+        # It matches your current implementation in main.py.
+        proc_emits = {
+            "PerceptionToPoseSegment": ["PoseSegmentUpdated"],
+            "UpdateHumanState": ["HumanStateUpdated"],
+            "DetectAction": ["ActionRecognized"],
+            "ComputeEarlyIntent": ["EarlyIntentUpdated", "BestFamilyChanged"],
+            "PrepareFamilyPretask": [],
+            "DispatchTask": ["TaskCompleted"],
+            "OnTaskCompleted": [],
+            "ResetTickFlags": [],
+        }
+
+        spec = ArchGraphSpec(
+            system_name=getattr(config, "SYSTEM_NAME", "ontology_hri_system"),
+            event_to_procs=event_to_procs,
+            proc_emits=proc_emits,
+            action_names=list(config.ACTION_DEFINITIONS.keys()),
+            family_count=len(families),
+            task_names=list(config.TASK_DEFINITIONS.keys()),
+            pretask_names=list(getattr(config, "PRETASK_DEFINITIONS", {}).keys()),
+        )
+
+        out = export_architecture_graph(
+            spec=spec,
+            output_dir=getattr(config, "ARCH_DIAGRAM_OUTPUT_DIR", "runs/diagrams"),
+            basename=getattr(config, "ARCH_DIAGRAM_BASENAME", "architecture"),
+            render_svg=getattr(config, "ARCH_DIAGRAM_RENDER_SVG", True),
+            overwrite=getattr(config, "ARCH_DIAGRAM_OVERWRITE", True),
+        )
+
+        logger.info(f"[ARCH] Wrote DOT: {out.get('dot')}")
+        if "svg" in out:
+            logger.info(f"[ARCH] Wrote SVG: {out.get('svg')}")
+        if "svg_error" in out:
+            logger.warning(f"[ARCH] SVG not generated: {out['svg_error']}")
 
     # -----------------------
     # Pose detector loop -> emits PoseTick events

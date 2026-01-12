@@ -1,9 +1,13 @@
-"""Memory Storage - stores recent pose segments and recognized actions/tasks."""
+"""Memory Storage (multi-human ready).
+
+- EpisodeMemory stores per-human pose segments, recognized actions, executed tasks.
+- MultiHumanMemoryStore holds a mapping: human_id -> EpisodeMemory.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from .perception_ontology import PoseStatement
 from .human_action_ontology import ActionInstance
@@ -26,3 +30,16 @@ class EpisodeMemory:
     def pose_label_sequence(self) -> List[str]:
         return [p.label for p in self.pose_segments]
 
+
+@dataclass
+class MultiHumanMemoryStore:
+    """Maps each human_id to its own EpisodeMemory (pose buffer + action/task history)."""
+    by_human: Dict[str, EpisodeMemory] = field(default_factory=dict)
+
+    def get(self, human_id: str) -> EpisodeMemory:
+        if human_id not in self.by_human:
+            self.by_human[human_id] = EpisodeMemory()
+        return self.by_human[human_id]
+
+    def clear_human(self, human_id: str) -> None:
+        self.get(human_id).clear()

@@ -1,10 +1,21 @@
-"""Upper Ontology (OU) - coordination concepts."""
+"""
+Upper Ontology (OU) - coordination concepts.
+
+In Arianna+-style architectures, OU defines global coordination:
+- system mode
+- events/conditions triggering procedures
+
+In this Python prototype:
+- SystemMode + UpperOntologyState remain the global coordination state.
+- RuntimeEvent is a lightweight event object (for the scheduler).
+- Condition is a callable predicate evaluated by the scheduler.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 
 class SystemMode(str, Enum):
@@ -19,32 +30,41 @@ class OntologyMeta:
     version: str = "0.1"
 
 
+@dataclass(frozen=True)
+class RuntimeEvent:
+    """A runtime event emitted inside the scheduler."""
+    name: str
+    payload: Dict[str, Any]
+    t: float
+
+
 @dataclass
 class Condition:
-    """A boolean check used by events."""
+    """
+    A boolean predicate over (scheduler, event).
+
+    - If True, the procedure can run.
+    - If False, the procedure is skipped.
+    """
     name: str
-    check: Callable[[], bool]
-    last_value: bool = False
-
-
-@dataclass
-class Event:
-    """An event becomes true when all its conditions become true."""
-    name: str
-    conditions: Dict[str, Condition] = field(default_factory=dict)
-
-    def evaluate(self) -> bool:
-        if not self.conditions:
-            return False
-        return all(c.check() for c in self.conditions.values())
+    check: Callable[[Any, RuntimeEvent], bool]
 
 
 @dataclass
 class Procedure:
-    """A procedure can be scheduled when an event triggers."""
+    """
+    A procedure runnable by the scheduler.
+
+    The scheduler decides *when* to run it based on:
+    - which event name triggered it
+    - its conditions
+    """
     name: str
-    run: Callable[[], None]
-    requires_event: Optional[Event] = None
+    run: Callable[[Any, RuntimeEvent], None]
+    conditions: Dict[str, Condition] = field(default_factory=dict)
+
+    def can_run(self, scheduler: Any, event: RuntimeEvent) -> bool:
+        return all(c.check(scheduler, event) for c in self.conditions.values())
 
 
 @dataclass
@@ -54,4 +74,3 @@ class UpperOntologyState:
 
     def set_mode(self, mode: SystemMode) -> None:
         self.mode = mode
-

@@ -1,40 +1,64 @@
+"""
+Procedure A (PA): action recognition + early intent inference (multi-human).
+
+- detect_action(human_id): final action recognition (suffix match + optional constraints)
+- compute_early_intent(human_id): returns candidate actions + families and best family
+
+Works even when:
+- No time constraints are defined (constraints are optional)
+- No families are built (families optional)
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from ontologies.human_action_ontology import ActionDefinition, ActionInstance, StepConstraint, ActionConstraint
-from ontologies.memory_storage import EpisodeMemory
-from utils.visualizer import format_candidates
+from ontologies.human_action_ontology import (
+    ActionDefinition,
+    ActionInstance,
+    ActionFamily,
+    StepConstraint,
+    ActionConstraint,
+)
+from ontologies.memory_storage import MultiHumanMemoryStore
 
 
 def _all_prefixes(seq: List[str]) -> List[List[str]]:
     return [seq[:i] for i in range(1, len(seq) + 1)]
 
 
+@dataclass(frozen=True)
+class EarlyIntent:
+    candidate_actions: Dict[str, int]          # action -> best matched prefix length
+    candidate_families: Dict[str, int]         # family_id -> prefix length (full prefix matched)
+    best_family_id: Optional[str]
+    best_family_prefix_len: int
+
+
 @dataclass
 class ProcedureA:
     action_defs: Dict[str, ActionDefinition]
-    memory: EpisodeMemory
+    memory_store: MultiHumanMemoryStore
+    families: Optional[Dict[str, ActionFamily]] = None
 
+    # -------------------------
+    # Constraint checking helpers
+    # -------------------------
     def _check_step_constraints(
         self,
         pose_segments,
         seq_len: int,
         step_constraints: Optional[List[StepConstraint]],
     ) -> bool:
-        """Validate optional per-step constraints against the matched suffix pose segments."""
         if step_constraints is None:
-            return True  # no constraints
+            return True
 
-        # Extract the last seq_len pose segments (the matched suffix)
         matched_segments = pose_segments[-seq_len:]
-
         if len(step_constraints) != len(matched_segments):
-            return False  # invalid configuration
+            return False
 
         for i, (seg, c) in enumerate(zip(matched_segments, step_constraints)):
-            # Pose must match config pose (safety)
             if seg.label != c.pose:
                 return False
 
@@ -44,7 +68,6 @@ class ProcedureA:
             if c.max_duration is not None and dur > c.max_duration:
                 return False
 
-            # Gap constraint relative to previous segment
             if i > 0 and c.max_gap_after_prev is not None:
                 prev = matched_segments[i - 1]
                 gap = seg.start_time - prev.end_time
@@ -58,39 +81,39 @@ class ProcedureA:
         pose_segments,
         seq_len: int,
         action_constraint: Optional[ActionConstraint],
-    ) -> Tuple[bool, Optional[float]]:
-        """Validate optional whole-action constraints; return (ok, start_time)."""
+    ) -> Tuple[bool, float]:
         matched_segments = pose_segments[-seq_len:]
         start_t = matched_segments[0].start_time
         end_t = matched_segments[-1].end_time
-        total = end_t - start_t
+        total_dur = end_t - start_t
 
         if action_constraint is None:
             return True, start_t
 
-        if action_constraint.min_total_duration is not None and total < action_constraint.min_total_duration:
+        if action_constraint.min_total_duration is not None and total_dur < action_constraint.min_total_duration:
             return False, start_t
-        if action_constraint.max_total_duration is not None and total > action_constraint.max_total_duration:
+        if action_constraint.max_total_duration is not None and total_dur > action_constraint.max_total_duration:
             return False, start_t
 
         return True, start_t
 
-    def detect_action(self, now_t: float) -> Optional[ActionInstance]:
-        """Return an ActionInstance if any action matches the current suffix and constraints pass."""
-        labels = self.memory.pose_label_sequence()
-        pose_segments = self.memory.pose_segments
+    # -------------------------
+    # Final action recognition (per human)
+    # -------------------------
+    def detect_action(self, human_id: str, now_t: float) -> Optional[ActionInstance]:
+        memory = self.memory_store.get(human_id)
+        labels = memory.pose_label_sequence()
+        pose_segments = memory.pose_segments
 
         for action_name, adef in self.action_defs.items():
-            for idx, seq in enumerate(adef.sequences):
+            for seq_idx, seq in enumerate(adef.sequences):
                 n = len(seq)
                 if n <= len(labels) and labels[-n:] == seq:
-                    # Check constraints if present
                     step_constraints = None
-                    if adef.step_constraints is not None and idx < len(adef.step_constraints):
-                        step_constraints = adef.step_constraints[idx]
+                    if adef.step_constraints is not None and seq_idx < len(adef.step_constraints):
+                        step_constraints = adef.step_constraints[seq_idx]
 
-                    ok_steps = self._check_step_constraints(pose_segments, n, step_constraints)
-                    if not ok_steps:
+                    if not self._check_step_constraints(pose_segments, n, step_constraints):
                         continue
 
                     ok_action, start_t = self._check_action_constraint(pose_segments, n, adef.action_constraint)
@@ -104,24 +127,48 @@ class ProcedureA:
                         end_time=now_t,
                         confidence=1.0,
                     )
-                    self.memory.recognized_actions.append(inst)
+                    memory.recognized_actions.append(inst)
                     return inst
 
         return None
 
-    def compute_candidate_actions(self) -> Dict[str, List[int]]:
-        """Candidate actions whose prefix matches some suffix (constraints not checked for candidates)."""
-        labels = self.memory.pose_label_sequence()
-        candidates: Dict[str, List[int]] = {}
+    # -------------------------
+    # Early intent (per human)
+    # -------------------------
+    def compute_early_intent(self, human_id: str) -> EarlyIntent:
+        memory = self.memory_store.get(human_id)
+        labels = memory.pose_label_sequence()
 
+        # Candidate actions based on prefix matches
+        candidate_actions: Dict[str, int] = {}
         for action_name, adef in self.action_defs.items():
+            best = 0
             for seq in adef.sequences:
                 for pref in _all_prefixes(seq):
                     m = len(pref)
                     if m <= len(labels) and labels[-m:] == pref:
-                        candidates.setdefault(action_name, []).append(m)
-        return candidates
+                        best = max(best, m)
+            if best > 0:
+                candidate_actions[action_name] = best
 
-    def debug_print_candidates(self, logger) -> None:
-        candidates = self.compute_candidate_actions()
-        logger.info(f"Candidates (early intent): {format_candidates(candidates)}")
+        # Candidate families: full family prefix must match suffix
+        candidate_families: Dict[str, int] = {}
+        best_family_id: Optional[str] = None
+        best_family_len: int = 0
+
+        if self.families:
+            for fam_id, fam in self.families.items():
+                pref = fam.prefix
+                m = len(pref)
+                if m <= len(labels) and labels[-m:] == pref:
+                    candidate_families[fam_id] = m
+                    if m > best_family_len:
+                        best_family_len = m
+                        best_family_id = fam_id
+
+        return EarlyIntent(
+            candidate_actions=candidate_actions,
+            candidate_families=candidate_families,
+            best_family_id=best_family_id,
+            best_family_prefix_len=best_family_len,
+        )

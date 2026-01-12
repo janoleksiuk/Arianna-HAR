@@ -8,7 +8,7 @@ ontology-network + procedure architecture but does not require OWL tooling.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 # -----------------------
@@ -17,13 +17,52 @@ from typing import Dict, List, Optional
 POSE_TICK_SECONDS: float = 0.5  # pose detector emits one pose every 0.5s (simulation)
 MAX_POSE_BUFFER_LEN: int = 50   # keep last N pose segments (compressed)
 
+# -----------------------
+# Scheduler tracing (Arianna+-style execution trace)
+# -----------------------
+TRACE: bool = True  # set False to disable trace output
+TRACE_PAYLOAD: bool = True  # include small payload summaries in trace lines
+TRACE_MAX_VALUE_LEN: int = 90  # truncate long payload values
+
+# -----------------------
+# Trace to JSON Lines (for live dashboard + evaluation)
+# -----------------------
+TRACE_JSONL: bool = True
+TRACE_JSONL_PATH: str = "runs/trace.jsonl"
+TRACE_JSONL_RESET_ON_START: bool = True  # overwrite trace file on each run
+
+# If True, store summarized payload fields in trace records
+TRACE_JSONL_INCLUDE_PAYLOAD: bool = True
+TRACE_JSONL_MAX_VALUE_LEN: int = 120
+
+# -----------------------
+# Architecture diagram (Graphviz)
+# -----------------------
+ARCH_DIAGRAM_ENABLE: bool = True
+ARCH_DIAGRAM_OUTPUT_DIR: str = "runs/diagrams"
+ARCH_DIAGRAM_BASENAME: str = "architecture"   # will write architecture.dot (+ .svg if dot exists)
+ARCH_DIAGRAM_RENDER_SVG: bool = True          # requires Graphviz installed (dot executable)
+ARCH_DIAGRAM_OVERWRITE: bool = True
+
+# -----------------------
+# Pose detector simulation mode
+# -----------------------
+# "random" -> random pose every tick
+# "action_sequence" -> emit pose sequences that match a random action template
+POSE_DETECTOR_MODE: str = "action_sequence"
+
+# Only used when POSE_DETECTOR_MODE == "action_sequence"
+STEP_DWELL_TICKS_MIN: int = 1
+STEP_DWELL_TICKS_MAX: int = 4
+
+ADD_NOISE_BETWEEN_ACTIONS: bool = False
+NOISE_TICKS_MIN: int = 0
+NOISE_TICKS_MAX: int = 4
+
 
 # -----------------------
 # Domain vocabulary
 # -----------------------
-# Pose labels (finite set) as requested:
-# {(sitting, standing, raising hand, picking, bowing, walking, drinking)}
-# We normalize labels to snake_case for code.
 POSE_SET = {
     "sitting",
     "standing",
@@ -36,14 +75,8 @@ POSE_SET = {
 
 
 # -----------------------
-# Actions (from your table)
+# Action definitions (NO time constraints used here)
 # -----------------------
-# NOTE:
-# - 'Washing hands' in the table uses: Sitting, Standing, Walking, Washing (bowing)
-#   Since the pose set does not include 'washing', we model it as 'bowing'.
-#
-# - 'Picking(a cup)' and 'Picking(a can)' both map to pose 'picking' in this prototype.
-#   Disambiguation could be added later by enriching poses with object context.
 ACTION_DEFINITIONS: Dict[str, List[List[str]]] = {
     "drinking_water": [
         ["sitting", "standing", "walking", "picking", "walking", "sitting"],
@@ -61,6 +94,21 @@ ACTION_DEFINITIONS: Dict[str, List[List[str]]] = {
         ["sitting", "standing", "walking", "bowing"],
     ],
 }
+
+# Optional (currently unused): step constraints per action sequence.
+# Keep empty -> current action set has NO time constraints.
+ACTION_STEP_CONSTRAINTS: Dict[str, List[List[dict]]] = {}
+
+# Example (COMMENT): if later you want time constraints:
+# ACTION_STEP_CONSTRAINTS = {
+#     "picking_objects_from_floor": [
+#         [
+#             {},                 # standing
+#             {"min_duration": 2.0},  # picking >= 2s
+#             {},                 # raising_hand
+#         ]
+#     ]
+# }
 
 
 # -----------------------
@@ -130,7 +178,42 @@ TASK_DEFINITIONS: Dict[str, List[BehaviorStepDef]] = {
 }
 
 
+# -----------------------
+# Action Families + Pre-tasks 
+# -----------------------
+# Families are built automatically from shared prefixes.
+# Here we optionally attach a "pre_task" to a prefix (tuple of pose labels).
+#
+# Meaning: when that prefix is observed as a suffix of the current buffer,
+# the robot can do a non-committal preparation routine.
+FAMILY_PRETASK_BY_PREFIX: Dict[Tuple[str, ...], str] = {
+    ("sitting", "standing", "walking"): "pretask_observe_and_scan",
+    ("sitting", "standing", "walking", "picking"): "pretask_scan_pick_area",
+    ("standing", "picking"): "pretask_scan_floor_area",
+    ("walking", "sitting"): "pretask_scan_book_area",
+}
+
+# Define what each pretask does (safe, reversible, no grasp).
+PRETASK_DEFINITIONS: Dict[str, List[BehaviorStepDef]] = {
+    "pretask_observe_and_scan": [
+        BehaviorStepDef("face_human"),
+        BehaviorStepDef("move_to_observation_point"),
+        BehaviorStepDef("scan_environment"),
+    ],
+    "pretask_scan_pick_area": [
+        BehaviorStepDef("face_human"),
+        BehaviorStepDef("scan_pick_zone"),
+    ],
+    "pretask_scan_floor_area": [
+        BehaviorStepDef("tilt_sensors_down"),
+        BehaviorStepDef("scan_floor"),
+    ],
+    "pretask_scan_book_area": [
+        BehaviorStepDef("scan_shelves_for_book"),
+    ],
+}
+
+
 # Execution simulation
 BEHAVIOR_STEP_SECONDS: float = 0.7  # each behavior step sleeps this long (simulation)
 SYSTEM_NAME: str = "ontology_hri_system"
-
